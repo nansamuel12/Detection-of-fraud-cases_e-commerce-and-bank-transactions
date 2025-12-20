@@ -18,3 +18,7 @@ data/raw/
 .venv
 env/
 venv/
+
+# MLflow
+mlruns/
+mlflow.db
