@@ -6,7 +6,7 @@ def set_style():
     sns.set_style("whitegrid")
     sns.set_palette("muted")
 
-def plot_class_distribution(y, title="Class Distribution"):
+def plot_class_distribution(y, title="Class Distribution", save_path=None):
     """
     Plots the count of each class.
     """
@@ -24,9 +24,14 @@ def plot_class_distribution(y, title="Class Distribution"):
         y_coord = p.get_height()
         ax.annotate(percentage, (x, y_coord), ha='center')
         
-    plt.show()
+    if save_path:
+        plt.savefig(save_path)
+        logging.info(f"Saved plot to {save_path}")
+        plt.close()
+    else:
+        plt.show()
 
-def plot_numerical_distributions(df, numerical_cols, hue=None):
+def plot_numerical_distributions(df, numerical_cols, hue=None, save_dir=None):
     """
     Plots distributions of numerical columns.
     """
@@ -34,9 +39,16 @@ def plot_numerical_distributions(df, numerical_cols, hue=None):
         plt.figure(figsize=(8, 4))
         sns.histplot(data=df, x=col, hue=hue, kde=True, bins=30)
         plt.title(f"Distribution of {col}")
-        plt.show()
+        
+        if save_dir:
+            path = f"{save_dir}/distribution_{col}.png"
+            plt.savefig(path)
+            logging.info(f"Saved plot to {path}")
+            plt.close()
+        else:
+            plt.show()
 
-def plot_categorical_breakdown(df, cat_cols, target=None):
+def plot_categorical_breakdown(df, cat_cols, target=None, save_dir=None):
     """
     Plots breakdown of categorical features vs target.
     """
@@ -53,4 +65,11 @@ def plot_categorical_breakdown(df, cat_cols, target=None):
             sns.countplot(x=col, data=df)
             plt.title(f"Count of {col}")
         plt.xticks(rotation=45)
-        plt.show()
+        
+        if save_dir:
+             path = f"{save_dir}/categorical_{col}.png"
+             plt.savefig(path)
+             logging.info(f"Saved plot to {path}")
+             plt.close()
+        else:
+             plt.show()
