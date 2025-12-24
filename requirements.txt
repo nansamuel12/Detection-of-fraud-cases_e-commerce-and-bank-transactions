@@ -7,3 +7,5 @@ imbalanced-learn
 shap
 jupyter
 notebook
+mlflow
+joblib
