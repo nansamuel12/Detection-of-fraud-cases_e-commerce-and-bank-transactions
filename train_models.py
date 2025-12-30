@@ -17,6 +17,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), 'src')))
 from src.data_loader import load_data, basic_cleaning
 from src.preprocessing import assign_countries, feature_engineering_dates, feature_engineering_velocity, get_preprocessor
 from src.model_training import split_data, train_model, evaluate_model, print_evaluation_report
+from src.explainability import explain_model
 
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
@@ -560,6 +561,35 @@ def train_fraud_detection_pipeline(dataset_name, X, y, numerical_cols, categoric
     cv_df.to_csv(cv_path, index=False)
     
     logging.info(f"Results saved to: {results_dir}")
+    
+    # ==================== EXPLAINABILITY ANALYSIS ====================
+    print("\n" + "="*80)
+    print("RUNNING EXPLAINABILITY ANALYSIS")
+    print("="*80 + "\n")
+    
+    try:
+        # Extract feature names if possible (from preprocessor in pipeline)
+        # Note: This might be complex for Pipeline with ColumnTransformer, but explainability module usually handles it if passed model is pipeline
+        feature_names = None
+        if hasattr(best_model, 'named_steps') and 'preprocessor' in best_model.named_steps:
+            # Attempt to get feature names (works for sklearn > 1.0)
+            try:
+                feature_names = best_model.named_steps['preprocessor'].get_feature_names_out()
+            except:
+                pass
+
+        explain_model(
+            model=best_model,
+            X_train=X_train,
+            X_test=X_test,
+            feature_names=feature_names,
+            y_true=y_test,
+            y_pred=best_model.predict(X_test),
+            output_dir=os.path.join(results_dir, 'explainability'),
+            generate_report=True
+        )
+    except Exception as e:
+        logging.error(f"Explainability analysis failed: {e}")
     
     return best_model, comparison_df, cv_df
 

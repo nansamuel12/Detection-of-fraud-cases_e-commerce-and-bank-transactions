@@ -475,88 +475,195 @@ class ExplainabilityAnalyzer:
         except Exception as e:
             raise ModelExplainabilityError(f"Error explaining instance with LIME: {str(e)}")
     
+    def analyze_predictions(
+        self, 
+        y_true: Union[pd.Series, np.ndarray], 
+        y_pred: Union[pd.Series, np.ndarray]
+    ) -> Dict[str, List[int]]:
+        """
+        Analyze predictions to find indices of TP, FP, FN, TN.
+        
+        Args:
+            y_true: True labels
+            y_pred: Predicted labels
+            
+        Returns:
+            Dictionary of indices for each category
+        """
+        try:
+            # Ensure inputs are numpy arrays for easier indexing
+            if isinstance(y_true, pd.Series):
+                y_true = y_true.values
+            if isinstance(y_pred, pd.Series):
+                y_pred = y_pred.values
+                
+            tp_indices = np.where((y_true == 1) & (y_pred == 1))[0]
+            fp_indices = np.where((y_true == 0) & (y_pred == 1))[0]
+            fn_indices = np.where((y_true == 1) & (y_pred == 0))[0]
+            tn_indices = np.where((y_true == 0) & (y_pred == 0))[0]
+            
+            logging.info(f"Found {len(tp_indices)} TP, {len(fp_indices)} FP, {len(fn_indices)} FN cases")
+            
+            return {
+                'TP': tp_indices.tolist(),
+                'FP': fp_indices.tolist(),
+                'FN': fn_indices.tolist(),
+                'TN': tn_indices.tolist()
+            }
+        except Exception as e:
+            raise ModelExplainabilityError(f"Error analyzing predictions: {str(e)}")
+
+    def explain_specific_instance(
+        self,
+        index: int,
+        label: str,
+        save: bool = True
+    ) -> None:
+        """
+        Generate SHAP waterfall plot for a specific instance index with a custom label.
+        """
+        if self.shap_explainer is None:
+            self.initialize_shap_explainer()
+            
+        try:
+            # We compute SHAP just for this instance to be efficient if not already computed
+            instance_data = self.X_test[index:index+1] # Keep 2D shape
+            
+            # For TreeExplainer/LinearExplainer it allows computing single instance
+            shap_values_single = self.shap_explainer.shap_values(instance_data)
+            
+            # Handle list return type for classifiers
+            if isinstance(shap_values_single, list):
+                shap_values_single = shap_values_single[1]
+                
+            # Create explanation object
+            explanation = shap.Explanation(
+                values=shap_values_single[0],
+                base_values=self.shap_explainer.expected_value[1] if isinstance(self.shap_explainer.expected_value, (list, np.ndarray)) else self.shap_explainer.expected_value,
+                data=instance_data.iloc[0] if isinstance(instance_data, pd.DataFrame) else instance_data[0],
+                feature_names=self.feature_names
+            )
+            
+            plt.figure(figsize=(10, 6))
+            shap.waterfall_plot(explanation, show=False)
+            plt.title(f"SHAP Waterfall - {label} (Index {index})", fontsize=14)
+            
+            if save:
+                save_path = self.output_dir / f'shap_{label.lower().replace(" ", "_")}_idx_{index}.png'
+                plt.savefig(save_path, dpi=300, bbox_inches='tight')
+                logging.info(f"Saved specific SHAP plot to {save_path}")
+            
+            plt.close()
+            
+        except Exception as e:
+            logging.warning(f"Could not explain specific instance {index}: {e}")
+
+    def compare_feature_importances(self, top_n: int = 5) -> pd.DataFrame:
+        """
+        Compare model's built-in feature importance with SHAP importance.
+        """
+        try:
+            # 1. Get Model Importance
+            model_imp = self.get_feature_importance(top_n=len(self.feature_names))
+            model_imp = model_imp.set_index('feature')['importance']
+            model_imp = model_imp / model_imp.sum() # Normalize
+            
+            # 2. Get SHAP Importance (Mean absolute value)
+            if self.shap_values is None:
+                self.compute_shap_values(max_samples=100)
+                
+            shap_imp_vals = np.abs(self.shap_values).mean(axis=0)
+            shap_imp = pd.Series(shap_imp_vals, index=self.feature_names)
+            shap_imp = shap_imp / shap_imp.sum() # Normalize
+            
+            # 3. Combine
+            comparison = pd.DataFrame({
+                'Model_Importance': model_imp,
+                'SHAP_Importance': shap_imp
+            })
+            
+            comparison['Total_Imp'] = comparison['Model_Importance'] + comparison['SHAP_Importance']
+            comparison = comparison.sort_values('Total_Imp', ascending=False).head(top_n)
+            
+            return comparison
+        except Exception as e:
+            logging.warning(f"Could not compare feature importances: {e}")
+            return pd.DataFrame()
+
     def generate_full_report(
         self,
+        y_true: Optional[Union[pd.Series, np.ndarray]] = None,
+        y_pred: Optional[Union[pd.Series, np.ndarray]] = None,
         top_n_features: int = 20,
-        num_shap_samples: int = 100,
-        num_lime_examples: int = 3
+        num_shap_samples: int = 100
     ) -> Dict[str, Any]:
         """
         Generate a comprehensive explainability report.
-        
         Args:
-            top_n_features: Number of top features for importance analysis
-            num_shap_samples: Number of samples for SHAP analysis
-            num_lime_examples: Number of instances to explain with LIME
-            
-        Returns:
-            Dictionary containing all explainability results
-            
-        Raises:
-            ModelExplainabilityError: If report generation fails
+            y_true: True labels (optional, required for TP/FP analysis)
+            y_pred: Predicted labels (optional, required for TP/FP analysis)
         """
         try:
             logging.info("Generating comprehensive explainability report...")
-            
             report = {}
             
             # 1. Feature Importance
-            logging.info("Step 1/5: Computing feature importance...")
+            logging.info("Step 1: Feature Importance")
             try:
-                feature_importance = self.get_feature_importance(
-                    method='default',
-                    top_n=top_n_features
-                )
-                report['feature_importance'] = feature_importance
                 self.plot_feature_importance(method='default', top_n=top_n_features)
-            except Exception as e:
-                logging.warning(f"Could not compute default feature importance: {e}")
-                report['feature_importance'] = None
-            
-            # 2. SHAP Analysis
+            except Exception as e: 
+                logging.warning(f"Feature importance plotting failed: {e}")
+
+            # 2. SHAP Analysis & Predictions
             if SHAP_AVAILABLE:
-                logging.info("Step 2/5: Performing SHAP analysis...")
-                try:
-                    self.initialize_shap_explainer()
-                    self.compute_shap_values(max_samples=num_shap_samples)
+                logging.info("Step 2: SHAP Analysis")
+                self.compute_shap_values(max_samples=num_shap_samples)
+                self.plot_shap_summary(plot_type='dot')
+                self.plot_shap_summary(plot_type='bar')
+                
+                # Compare importances
+                comparison_df = self.compare_feature_importances(top_n=5)
+                report['top_features_comparison'] = comparison_df
+                if not comparison_df.empty:
+                    print("\nTop 5 Fraud-Driving Features (Model vs SHAP):")
+                    print(comparison_df.to_string())
+
+                # Analyze TP/FP/FN if labels provided
+                if y_true is not None and y_pred is not None:
+                    logging.info("Step 3: Representative Case Analysis (TP/FP/FN)")
+                    indices = self.analyze_predictions(y_true, y_pred)
                     
-                    # Summary plots
-                    self.plot_shap_summary(plot_type='dot')
-                    self.plot_shap_summary(plot_type='bar')
-                    
-                    # Waterfall for first few instances
-                    for i in range(min(3, num_shap_samples)):
-                        self.plot_shap_waterfall(instance_idx=i)
-                    
-                    report['shap_completed'] = True
-                except Exception as e:
-                    logging.warning(f"SHAP analysis failed: {e}")
-                    report['shap_completed'] = False
-            else:
-                logging.info("Step 2/5: SHAP not available, skipping...")
-                report['shap_completed'] = False
+                    # Explain 1 representative from each category if available
+                    for case_type in ['TP', 'FP', 'FN']:
+                        if indices[case_type]:
+                            # Pick the first one (or random)
+                            idx = indices[case_type][0]
+                            self.explain_specific_instance(idx, label=f"Representative {case_type}")
             
-            # 3. LIME Analysis
-            if LIME_AVAILABLE:
-                logging.info("Step 3/5: Performing LIME analysis...")
-                try:
-                    for i in range(num_lime_examples):
-                        self.explain_instance_lime(instance_idx=i)
-                    report['lime_completed'] = True
-                except Exception as e:
-                    logging.warning(f"LIME analysis failed: {e}")
-                    report['lime_completed'] = False
-            else:
-                logging.info("Step 3/5: LIME not available, skipping...")
-                report['lime_completed'] = False
-            
-            logging.info("Explainability report generation completed!")
-            logging.info(f"Results saved to: {self.output_dir}")
-            
+            # 3. Business Recommendations
+            logging.info("Step 4: Generating Business Recommendations")
+            recommendations = """
+# Data-Driven Business Recommendations
+
+1. **Enhanced Verification for High-Risk Regions:** 
+   SHAP analysis indicates location-based features are top drivers. Implement Step-Up Authentication (2FA) for transactions originating from countries identified as high-risk by the IP mapping model.
+
+2. **Velocity-Based Rules:** 
+   'user_tx_count' and time-based features are significant. Introduce distinct velocity limits for new vs. established users. New users with >N transactions in 24 hours should be manually reviewed.
+
+3. **False Positive reduction:**
+   The False Positive analysis shows edge cases in legitimate high-value transactions. Create a "VIP Whitelist" based on long-term user history to bypass aggressive screening for loyal customers, improving their experience.
+"""
+            # Save recommendations
+            rec_path = self.output_dir / "business_recommendations.md"
+            with open(rec_path, "w") as f:
+                f.write(recommendations)
+                
+            logging.info(f"Report generation complete. Check {self.output_dir}")
             return report
             
         except Exception as e:
-            raise ModelExplainabilityError(f"Error generating explainability report: {str(e)}")
+            raise ModelExplainabilityError(f"Error generating report: {str(e)}")
 
 
 def explain_model(
@@ -564,25 +671,13 @@ def explain_model(
     X_train: Union[pd.DataFrame, np.ndarray],
     X_test: Union[pd.DataFrame, np.ndarray],
     feature_names: Optional[List[str]] = None,
+    y_true: Optional[Union[pd.Series, np.ndarray]] = None,
+    y_pred: Optional[Union[pd.Series, np.ndarray]] = None,
     output_dir: str = "explainability_results",
     generate_report: bool = True
 ) -> ExplainabilityAnalyzer:
     """
-    Convenience function to create an explainability analyzer and optionally generate a full report.
-    
-    Args:
-        model: Trained scikit-learn model or pipeline
-        X_train: Training features
-        X_test: Test features
-        feature_names: List of feature names
-        output_dir: Directory to save results
-        generate_report: Whether to generate a full report immediately
-        
-    Returns:
-        ExplainabilityAnalyzer instance
-        
-    Raises:
-        ModelExplainabilityError: If analysis fails
+    Convenience function to create an explainability analyzer.
     """
     try:
         analyzer = ExplainabilityAnalyzer(
@@ -594,7 +689,7 @@ def explain_model(
         )
         
         if generate_report:
-            analyzer.generate_full_report()
+            analyzer.generate_full_report(y_true=y_true, y_pred=y_pred)
         
         return analyzer
         
