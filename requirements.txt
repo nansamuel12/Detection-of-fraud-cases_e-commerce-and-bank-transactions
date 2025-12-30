@@ -5,7 +5,11 @@ matplotlib
 seaborn
 imbalanced-learn
 shap
+lime
 jupyter
 notebook
 mlflow
 joblib
+pytest
+flake8
+

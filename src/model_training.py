@@ -3,6 +3,8 @@ import numpy as np
 import logging
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, f1_score, roc_auc_score, accuracy_score, precision_score, recall_score, confusion_matrix
+from typing import Any, Dict, Optional, Tuple, Union
+
 try:
     import mlflow
     import mlflow.sklearn
@@ -10,7 +12,17 @@ try:
 except ImportError:
     mlflow_available = False
 
-def split_data(X, y, test_size=0.2, random_state=42, stratify=None):
+class ModelTrainingError(Exception):
+    """Custom exception for model training errors."""
+    pass
+
+def split_data(
+    X: Union[pd.DataFrame, np.ndarray], 
+    y: Union[pd.Series, np.ndarray], 
+    test_size: float = 0.2, 
+    random_state: int = 42, 
+    stratify: Optional[Union[pd.Series, np.ndarray]] = None
+) -> Tuple[Any, Any, Any, Any]:
     """
     Splits data into training and testing sets.
     
@@ -29,9 +41,18 @@ def split_data(X, y, test_size=0.2, random_state=42, stratify=None):
         return train_test_split(X, y, test_size=test_size, random_state=random_state, stratify=stratify)
     except Exception as e:
         logging.error(f"Error splitting data: {e}")
-        return None, None, None, None
+        # Return Nones or raise. Since the original swallowed exceptions, we'll raise now for better control or return None as before but cleaner.
+        # But per best practices, failing hard is often better than failing silently. 
+        # However, to preserve compatibility with existing main pipeline which probably doesn't catch this class-specific error yet, 
+        # I will log and re-raise a wrapper exception.
+        raise ModelTrainingError(f"Failed to split data: {e}")
 
-def train_model(model, X_train, y_train, model_name="model"):
+def train_model(
+    model: Any, 
+    X_train: Union[pd.DataFrame, np.ndarray], 
+    y_train: Union[pd.Series, np.ndarray], 
+    model_name: str = "model"
+) -> Optional[Any]:
     """
     Trains a scikit-learn model.
     
@@ -50,14 +71,22 @@ def train_model(model, X_train, y_train, model_name="model"):
         logging.info(f"{model_name} training completed.")
         
         if mlflow_available:
-            mlflow.sklearn.log_model(model, model_name)
+            try:
+                mlflow.sklearn.log_model(model, model_name)
+            except Exception as ml_err:
+                logging.warning(f"MLflow logging failed: {ml_err}")
             
         return model
     except Exception as e:
         logging.error(f"Error training {model_name}: {e}")
-        return None
+        raise ModelTrainingError(f"Failed to train {model_name}: {e}")
 
-def evaluate_model(model, X_test, y_test, model_name="model"):
+def evaluate_model(
+    model: Any, 
+    X_test: Union[pd.DataFrame, np.ndarray], 
+    y_test: Union[pd.Series, np.ndarray], 
+    model_name: str = "model"
+) -> Dict[str, float]:
     """
     Evaluates a trained model and returns metrics.
     
@@ -76,30 +105,34 @@ def evaluate_model(model, X_test, y_test, model_name="model"):
         y_prob = model.predict_proba(X_test)[:, 1] if hasattr(model, "predict_proba") else None
         
         metrics = {
-            "Accuracy": accuracy_score(y_test, y_pred),
-            "Precision": precision_score(y_test, y_pred, zero_division=0),
-            "Recall": recall_score(y_test, y_pred, zero_division=0),
-            "F1 Score": f1_score(y_test, y_pred, zero_division=0),
+            "Accuracy": float(accuracy_score(y_test, y_pred)),
+            "Precision": float(precision_score(y_test, y_pred, zero_division=0)),
+            "Recall": float(recall_score(y_test, y_pred, zero_division=0)),
+            "F1 Score": float(f1_score(y_test, y_pred, zero_division=0)),
         }
         
         if y_prob is not None:
-             metrics["ROC AUC"] = roc_auc_score(y_test, y_prob)
+             metrics["ROC AUC"] = float(roc_auc_score(y_test, y_prob))
         
         logging.info(f"Metrics for {model_name}: {metrics}")
         
         # Log to MLflow if available
         if mlflow_available:
-            for k, v in metrics.items():
-                mlflow.log_metric(k, v)
+            try:
+                for k, v in metrics.items():
+                    mlflow.log_metric(k, v)
+            except Exception as ml_err:
+                logging.warning(f"MLflow metric logging failed: {ml_err}")
 
         return metrics
     except Exception as e:
         logging.error(f"Error evaluating {model_name}: {e}")
         return {}
 
-def print_evaluation_report(metrics, model_name="model"):
+def print_evaluation_report(metrics: Dict[str, float], model_name: str = "model") -> None:
     print(f"\nModel Performance for: {model_name}")
     print("-" * 30)
     for k, v in metrics.items():
         print(f"{k}: {v:.4f}")
     print("-" * 30)
+
