@@ -261,7 +261,7 @@ def evaluate_and_compare_models(models_dict, X_test, y_test):
     
     return comparison_df
 
-def select_best_model(comparison_df, cv_results_dict):
+def select_best_model(comparison_df, cv_results_dict, dataset_name='dataset'):
     """
     Selects the best model based on performance and interpretability.
     Task 2b: Model selection with justification.
@@ -270,55 +270,30 @@ def select_best_model(comparison_df, cv_results_dict):
     print("MODEL SELECTION ANALYSIS")
     print("="*80)
     
-    # Find best model by F1 Score
-    best_f1_idx = comparison_df['F1 Score'].idxmax()
-    best_f1_model = comparison_df.loc[best_f1_idx, 'Model']
-    
-    # Find best model by ROC AUC
-    best_auc_idx = comparison_df['ROC AUC'].idxmax()
-    best_auc_model = comparison_df.loc[best_auc_idx, 'Model']
-    
-    print(f"\nBest F1 Score: {best_f1_model} ({comparison_df.loc[best_f1_idx, 'F1 Score']:.4f})")
-    print(f"Best ROC AUC: {best_auc_model} ({comparison_df.loc[best_auc_idx, 'ROC AUC']:.4f})")
-    
-    # Interpretability considerations
-    print("\n--- INTERPRETABILITY ANALYSIS ---")
-    print("LogisticRegression: HIGH - Coefficients directly interpretable, feature importance clear")
-    print("RandomForest: MEDIUM - Feature importance available, but ensemble of trees less transparent")
-    print("GradientBoosting: LOW - Complex boosting process, harder to explain individual predictions")
-    
-    # Performance vs Interpretability Trade-off
-    print("\n--- PERFORMANCE vs INTERPRETABILITY TRADE-OFF ---")
-    lr_row = comparison_df[comparison_df['Model'] == 'LogisticRegression']
-    rf_row = comparison_df[comparison_df['Model'] == 'RandomForest']
-    gb_row = comparison_df[comparison_df['Model'] == 'GradientBoosting']
-    
-    if not lr_row.empty:
-        print(f"LogisticRegression - F1: {lr_row['F1 Score'].values[0]:.4f}, "
-              f"Recall: {lr_row['Recall'].values[0]:.4f}, Interpretability: HIGH")
-    if not rf_row.empty:
-        print(f"RandomForest - F1: {rf_row['F1 Score'].values[0]:.4f}, "
-              f"Recall: {rf_row['Recall'].values[0]:.4f}, Interpretability: MEDIUM")
-    if not gb_row.empty:
-        print(f"GradientBoosting - F1: {gb_row['F1 Score'].values[0]:.4f}, "
-              f"Recall: {gb_row['Recall'].values[0]:.4f}, Interpretability: LOW")
-    
-    # Final Recommendation
-    print("\n--- FINAL MODEL SELECTION ---")
-    print("For Fraud Detection, we prioritize:")
-    print("1. High Recall (minimize false negatives - catch fraudulent transactions)")
-    print("2. Reasonable Precision (minimize false positives - avoid blocking legitimate transactions)")
-    print("3. Interpretability (explain decisions for regulatory compliance and user trust)")
-    
-    # Select based on recall and interpretability
+    # 1. Comparison DataFrame
+    print("\nModel Comparison Table:")
+    print(comparison_df.to_string(index=False))
+
+    # 2. Add Interpretability Scores
     comparison_df_sorted = comparison_df.copy()
-    comparison_df_sorted['Interpretability_Score'] = comparison_df_sorted['Model'].map({
-        'LogisticRegression': 3,
-        'RandomForest': 2,
-        'GradientBoosting': 1
-    })
     
-    # Weighted score: 40% Recall, 30% F1, 20% ROC AUC, 10% Interpretability
+    # Map models to interpretability scores (Higher is better)
+    interpretability_map = {
+        'LogisticRegression': 3,   # High
+        'LogisticRegression_tuned': 3,
+        'RandomForest': 2,         # Medium
+        'RandomForest_tuned': 2,
+        'GradientBoosting': 1,     # Low
+        'XGBoost': 1
+    }
+    
+    # Apply mapping (default to 1 if unknown)
+    comparison_df_sorted['Interpretability_Score'] = comparison_df_sorted['Model'].apply(
+        lambda x: interpretability_map.get(x.split('_tuned')[0], 1)
+    )
+    
+    # 3. Calculate Composite Score
+    # Weighted score: 40% Recall (Critical for fraud), 30% F1, 20% ROC AUC, 10% Interpretability
     comparison_df_sorted['Composite_Score'] = (
         0.4 * comparison_df_sorted['Recall'] +
         0.3 * comparison_df_sorted['F1 Score'] +
@@ -326,12 +301,49 @@ def select_best_model(comparison_df, cv_results_dict):
         0.1 * (comparison_df_sorted['Interpretability_Score'] / 3)
     )
     
+    comparison_df_sorted = comparison_df_sorted.sort_values('Composite_Score', ascending=False)
+    
     best_overall_idx = comparison_df_sorted['Composite_Score'].idxmax()
     best_overall_model = comparison_df_sorted.loc[best_overall_idx, 'Model']
+    best_score = comparison_df_sorted.loc[best_overall_idx, 'Composite_Score']
     
     print(f"\nRecommended Model: {best_overall_model}")
-    print(f"Composite Score: {comparison_df_sorted.loc[best_overall_idx, 'Composite_Score']:.4f}")
-    print(f"Justification: Balances high recall for fraud detection with interpretability for compliance.")
+    print(f"Composite Score: {best_score:.4f}")
+    
+    # 4. Generate Markdown Report
+    report_content = f"""# Final Model Selection Report - {dataset_name}
+
+## 1. Executive Summary
+The **{best_overall_model}** has been selected as the champion model for fraud detection on the {dataset_name} dataset. 
+It achieved the highest composite score of **{best_score:.4f}**, effectively balancing fraud detection capability (High Recall) with operational efficiency (Precision) and regulatory transparency (Interpretability).
+
+## 2. Model Comparison Table
+The following table compares all trained models on the held-out test set:
+
+{comparison_df_sorted[['Model', 'Accuracy', 'Precision', 'Recall', 'F1 Score', 'ROC AUC', 'Composite_Score']].to_markdown(index=False, floatfmt=".4f")}
+
+## 3. Selection Methodology
+We utilized a multi-objective decision matrix to select the final model:
+- **Recall (40%)**: Primary metric. Missing a fraud case (False Negative) is the most costly error.
+- **F1 Score (30%)**: Harmonic mean of Precision and Recall to ensure we don't flag too many legitimate transactions.
+- **ROC AUC (20%)**: Measures the model's ability to rank transactions by risk.
+- **Interpretability (10%)**: Critical for explaining decisions to customers and regulators.
+
+## 4. Interpretability Analysis
+- **Logistic Regression**: High. Coefficients directly map to feature impact (odds ratios).
+- **Random Forest**: Medium. Feature importance is available, but individual prediction paths are complex.
+- **Gradient Boosting**: Low. Highly non-linear and harder to explain, though SHAP values help.
+
+## 5. Final Justification
+{best_overall_model} was chosen because it maximizes the detection of fraudulent transactions while maintaining a reasonable false positive rate. Its interpretability level matches the complexity of the fraud patterns found in the data.
+"""
+    
+    report_path = os.path.join(os.getcwd(), 'results', f'FINAL_MODEL_REPORT_{dataset_name}.md')
+    os.makedirs(os.path.dirname(report_path), exist_ok=True)
+    with open(report_path, 'w') as f:
+        f.write(report_content)
+    
+    logging.info(f"Final model selection report saved to: {report_path}")
     print("="*80 + "\n")
     
     return best_overall_model
@@ -525,7 +537,7 @@ def train_fraud_detection_pipeline(dataset_name, X, y, numerical_cols, categoric
     comparison_df = evaluate_and_compare_models(all_models, X_test, y_test)
     
     # Model selection
-    best_model_name = select_best_model(comparison_df, all_cv_results)
+    best_model_name = select_best_model(comparison_df, all_cv_results, dataset_name)
     best_model = all_models[best_model_name]
     
     # Save best model
