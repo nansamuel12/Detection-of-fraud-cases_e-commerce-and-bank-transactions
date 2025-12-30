@@ -1,84 +1,255 @@
+Name: Hanna Samuel
+
+Role: Data Scientist, Adey Innovations Inc.
+
+Date: December 2025
+
 # Improved Detection of Fraud Cases for E-commerce and Bank Transactions
-## Final Submission - Report
 
-**Date:** December 30, 2025  
-**Author:** Nan Samuel  
-**Role:** Data Scientist @ Adey Innovations Inc.
+## Overview
 
----
+Adey Innovations Inc. is a leading financial technology company providing solutions for e-commerce platforms and banking institutions. Fraudulent transactions pose significant financial and reputational risks to both businesses and customers.
 
-## 1. Executive Summary
-This project successfully developed a robust, explainable, and high-performance fraud detection system for both e-commerce and bank credit card transactions. By leveraging advanced machine learning ensembles and addressing class imbalance with SMOTE, we achieved a model that balances high recall (catching fraud) with precision (minimizing false alarms). Furthermore, we integrated state-of-the-art explainability tools (SHAP, LIME) to ensure all predictions are transparent and actionable for business stakeholders.
+The objective of this project is to design and implement accurate, robust fraud detection models for:
 
----
+*   **E-commerce transactions**
+*   **Bank credit card transactions**
 
-## 2. Problem Statement
-Fraudulent transactions pose a significant financial risk and erode customer trust. The key challenges addressed in this project were:
-1.  **Class Imbalance:** Fraud cases are extremely rare (<1% of data), making standard training ineffective.
-2.  **Precision-Recall Trade-off:** Aggressive fraud detection can block legitimate users (False Positives), while lax detection misses fraud (False Negatives).
-3.  **Black Box Nature:** Complex models often lack transparency, which is unacceptable for regulatory compliance.
+The project leverages data analysis, feature engineering, machine learning, geolocation analysis, and model explainability to improve fraud detection performance while balancing transaction security and customer experience.
 
----
+## Business Need
 
-## 3. Methodology
+Effective fraud detection is critical for Adey Innovations Inc. to:
 
-### 3.1 Data Preprocessing & Feature Engineering
-- **Geolocation Mapping:** Mapped IP addresses to countries to identify high-risk regions using `merge_asof`.
-- **Temporal Features:** Extracted `hour_of_day`, `day_of_week`, and computed `time_diff` (latency between signup and purchase).
-- **Velocity Features:** Calculated transaction frequency (`user_tx_count`) to catch bots and rapid-fire attacks.
-- **Handling Imbalance:** Applied **SMOTE (Synthetic Minority Over-sampling Technique)** within the training pipeline to rigorously prevent data leakage.
+*   **Prevent financial losses** caused by fraudulent activities
+*   **Maintain trust** with customers and financial institutions
+*   **Minimize disruption** to legitimate users
+*   **Enable real-time monitoring** and reporting
 
-### 3.2 Model Development
-We implemented a multi-stage modeling approach:
-1.  **Baseline:** Logistic Regression (for interpretability benchmarking).
-2.  **Ensemble Method 1:** Random Forest (for robustness against outliers and non-linearity).
-3.  **Ensemble Method 2:** Gradient Boosting (XGBoost/sklearn) for maximizing predictive performance.
-4.  **Hyperparameter Tuning:** Utilized `GridSearchCV` to optimize learning rates, tree depths, and regularization.
+A key challenge in fraud detection is balancing **false positives** (legitimate transactions incorrectly flagged as fraud) and **false negatives** (fraudulent transactions that go undetected). Therefore, models must be evaluated not only on accuracy but also on their ability to manage this trade-off using appropriate performance metrics.
 
----
+## Data and Features
 
-## 4. Model Evaluation & Selection
+### Fraud_Data.csv (E-commerce Transactions)
 
-We utilized a composite scoring system to select the champion model, weighting **Recall (40%)**, **F1-Score (30%)**, **ROC-AUC (20%)**, and **Interpretability (10%)**.
+This dataset contains detailed transaction-level data used to identify fraudulent e-commerce activities.
 
-### Results Summary
-| Model | Accuracy | Precision | Recall | F1 Score | ROC AUC | Justification |
-|-------|----------|-----------|--------|----------|---------|---------------|
-| **Random Forest (Final Selection)** | **0.9995** | **0.94** | **0.81** | **0.87** | **0.91** | **Best balance of high recall and stability.** |
-| Logistic Regression | 0.9500 | 0.15 | 0.85 | 0.25 | 0.90 | High recall but too many false alarms. |
-| Gradient Boosting | 0.9991 | 0.89 | 0.78 | 0.83 | 0.89 | Good precision but missed more fraud cases. |
+**Key features include:**
 
-*Note: Metrics are illustrative based on typical run outputs.*
+*   `user_id`: Unique identifier for each user
+*   `signup_time`: Timestamp of user registration
+*   `purchase_time`: Timestamp of transaction
+*   `purchase_value`: Transaction amount
+*   `device_id`, `browser`, `source`: Device and access details
+*   `sex`, `age`: User demographic information
+*   `ip_address`: IP address of the transaction
+*   `class`: Target variable (1 = fraud, 0 = non-fraud)
 
----
+**Critical Challenge:**
+This dataset is highly imbalanced, with far fewer fraudulent transactions than legitimate ones.
 
-## 5. Model Explainability
+### IpAddress_to_Country.csv
 
-To unbox the model's decisions, we implemented the `src/explainability.py` module:
+This dataset maps IP address ranges to countries and is used for geolocation analysis.
 
-### 5.1 SHAP Analysis (Global)
-- **Top Drivers:** The most critical features driving fraud prediction were `time_diff` (short time between signup and purchase) and `user_tx_count` (high velocity).
-- **Geography:** Transactions from certain high-risk countries showed consistently higher SHAP values.
+**Key fields:**
 
-### 5.2 LIME & Waterfall Plots (Local)
-We generated case-specific explanations for:
-- **True Positives (TP):** Correctly identified fraud. Explanation showed a combination of "unusual hour" and "high velocity".
-- **False Positives (FP):** Legitimate high-value transactions flagged incorrectly. Analysis revealed these were loyal customers making unusual vacation purchases.
+*   `lower_bound_ip_address`
+*   `upper_bound_ip_address`
+*   `country`
 
----
+### creditcard.csv (Bank Transactions)
 
-## 6. Business Recommendations
+This dataset contains anonymized bank credit card transactions.
 
-Based on our data-driven findings, we recommend the following actions:
+**Key features:**
 
-1.  **Step-Up Authentication:** Automatically trigger 2FA (SMS/Email code) for any transaction where the SHAP score for `time_diff` is in the top 10% (i.e., immediate purchase after signup).
-2.  **Velocity Limits:** Implement a "Cool-down" period. New accounts attempting >3 transactions in 1 hour should be flagged for manual review.
-3.  **VIP Allow-listing:** reduce False Positives by creating a dynamic allow-list for users with >1 year of history and <0.1% dispute rate, bypassing aggressive velocity checks.
+*   `Time`: Seconds elapsed since the first transaction
+*   `V1–V28`: PCA-transformed features
+*   `Amount`: Transaction amount
+*   `Class`: Target variable (1 = fraud, 0 = non-fraud)
 
----
+**Critical Challenge:**
+Like the e-commerce dataset, this data is extremely imbalanced.
 
-## 7. Conclusion & Future Work
-The deployed model significantly improves fraud detection capabilities. Future work will focus on:
-- **Deep Learning:** Exploring LSTM/GRUs for sequential pattern recognition.
-- **Real-time API:** Deploying the model via FastAPI/Docker for sub-100ms inference.
-- **Feedback Loop:** Implementing an automated retraining pipeline based on analysts' confirmed fraud labels.
+## Feature Engineering: Rationale and Business Relevance
+
+Each engineered feature was designed to capture known fraud behavior patterns observed in real-world e-commerce and banking systems.
+
+1.  **Time-Based Features (hour, day, month)**
+    Fraudulent transactions often occur at unusual hours or during low-monitoring periods when user vigilance and institutional oversight are reduced. Extracting temporal features enables the model to detect abnormal transaction timing patterns that differ from typical customer behavior.
+
+2.  **Time Difference Between Signup and Purchase (`time_since_signup`)**
+    Fraudsters frequently create accounts and perform fraudulent transactions shortly after registration. This feature helps identify suspicious “rapid-purchase” behavior, which is a strong indicator of account abuse and synthetic identity fraud.
+
+3.  **Transaction Velocity (`user_tx_count`)**
+    Legitimate users generally exhibit stable purchasing behavior over time, whereas fraudulent accounts often generate multiple transactions within short time windows. Measuring transaction frequency per user helps detect abnormal bursts of activity commonly associated with fraud attempts.
+
+4.  **Purchase Value (`purchase_value` / `Amount`)**
+    Fraudulent transactions tend to cluster around higher purchase values to maximize financial gain. Including transaction amount allows the model to learn risk patterns associated with unusually large or atypical purchases.
+
+5.  **Geolocation Features (Country from IP Address)**
+    Fraud rates vary significantly by geographic region due to differences in regulation, monitoring, and fraud prevalence. Mapping IP addresses to countries allows the model to incorporate geographic risk signals and identify high-risk regions associated with fraudulent activity.
+
+6.  **Device and Browser Information**
+    Fraudsters often reuse devices or rely on specific browser configurations to automate attacks. Device ID and browser features help capture repeated usage patterns that may indicate coordinated fraud attempts.
+
+These engineered features improve model performance by transforming raw transactional data into meaningful behavioral indicators aligned with known fraud patterns.
+
+## Class Imbalance Analysis and Resampling Documentation
+
+The original datasets exhibit extreme class imbalance, with fraudulent transactions representing a small minority of all observations. This imbalance can bias models toward predicting non-fraud and reduce fraud detection effectiveness.
+
+**Before Resampling:**
+Exploratory analysis confirmed that non-fraud transactions account for the vast majority of observations, while fraud cases represent a small percentage of the dataset.
+
+**After Resampling (SMOTE Applied):**
+SMOTE was applied **only to the training data** to synthetically generate minority class samples and balance class distributions. This ensures the model learns fraud patterns effectively **without data leakage**.
+
+Following resampling, the class distribution in the training set became approximately balanced between fraud and non-fraud classes, improving the model’s ability to detect fraudulent transactions without compromising evaluation integrity.
+
+## Project Structure
+
+The repository is organized as follows:
+
+```bash
+fraud-detection/
+│
+├── data/
+│   ├── raw/               # Original datasets
+│   └── processed/         # Cleaned and feature-engineered data
+│
+├── notebooks/
+│   ├── eda-fraud-data.ipynb
+│   ├── eda-creditcard.ipynb
+│   ├── feature-engineering.ipynb
+│   ├── modeling.ipynb
+│   ├── shap-explainability.ipynb
+│   └── README.md
+│
+├── src/
+│   ├── data_loader.py
+│   ├── preprocessing.py
+│   ├── model_training.py
+│   └── explainability.py
+│
+├── models/                # Saved model artifacts
+│
+├── scripts/
+│   └── generate_plots.py
+│
+├── doc/
+│   └── Improved_detection_of_fraud_cases_for_e_commerce_and_bank_Final_Submission_Report.md
+│
+├── requirements.txt
+├── README.md
+└── .gitignore
+```
+
+## Task 1: Data Analysis and Preprocessing (Completed)
+
+### Data Cleaning
+*   Removed duplicate records
+*   Checked and handled missing values with justification
+*   Converted timestamp fields to proper datetime formats
+
+### Exploratory Data Analysis (EDA)
+EDA was conducted to understand data distributions and fraud patterns:
+*   **Univariate analysis:** distributions of age, purchase value, transaction amount
+*   **Bivariate analysis:** relationship between fraud and transaction value, age, and time-based features
+*   **Class distribution analysis:** quantified severe class imbalance
+
+**Figure 1: Fraud Probability by Country**
+Fraud probability varies noticeably across countries, indicating that geographic location is a meaningful risk factor in fraud detection. Countries such as Canada and the United Kingdom exhibit relatively higher fraud probabilities compared to others, while Germany shows a lower fraud rate. These differences suggest that regional factors such as regulatory environments, transaction patterns, or fraud prevalence influence fraudulent behavior. This observation justifies the integration of IP-to-country mapping during feature engineering and supports the inclusion of geographic features to improve model performance and risk-based monitoring strategies.
+
+*Note: Visualizations (Fig 2-7) are available in the `photo/` directory and EDA notebooks.*
+
+### Geolocation Integration
+*   Converted IP addresses to integer format
+*   Merged `Fraud_Data.csv` with `IpAddress_to_Country.csv` using range-based lookup
+*   Analyzed fraud rates by country
+*   *This analysis revealed geographic regions with elevated fraud risk.*
+
+### Feature Engineering
+The following features were engineered to improve fraud detection:
+*   **Time-based features:** `hour_of_day`, `day_of_week`, `time_since_signup`
+*   **Transaction velocity:** Number of transactions per user within defined time windows
+*   **Geolocation features:** Country derived from IP address mapping
+*   **Data Transformation:** Numerical features scaled, Categorical features One-Hot encoded.
+
+## Task 2: Model Building and Training (Completed)
+
+### Data Preparation
+*   stratified train-test split (`test_size=0.2`) to preserve class distribution.
+*   Separate features from target variables.
+
+### Baseline Model
+*   **Logistic Regression:** Trained as an interpretable baseline.
+*   **Performance:** High interpretability but lower precision compared to ensembles.
+
+### Ensemble Models
+*   **Random Forest:** Selected for robustness and ability to handle non-linearity.
+*   **Gradient Boosting:** Evaluated for maximizing predictive performance.
+*   **Hyperparameter Tuning:** Performed using `GridSearchCV` / `RandomizedSearchCV` for `n_estimators`, `max_depth`, etc.
+
+### Cross-Validation
+*   Applied **Stratified K-Fold (k=5)**.
+*   Reported mean and standard deviation of evaluation metrics (F1, precision, recall, ROC-AUC).
+
+### Model Selection Results
+We compared baseline and ensemble models side-by-side using a composite score weighting Recall (40%), F1 (30%), ROC-AUC (20%), and Interpretability (10%).
+
+*   **Selected Champion Model:** Random Forest
+*   **Justification:** It provided the best balance of detecting fraud (high recall) while minimizing false alarms (precision), with acceptable interpretability via feature importance and SHAP.
+
+## Task 3: Model Explainability (Completed)
+
+### Feature Importance
+*   Extracted top 10 features from the ensemble model.
+*   Top drivers included `time_since_signup`, `user_tx_count`, and `purchase_value`.
+
+### SHAP Analysis
+*   **Global:** Generated SHAP summary plots showing `time_since_signup` (short duration) is the strongest predictor of fraud.
+*   **Local (Waterfall):**
+    *   **True Positive:** Showed combination of "unusual hour" and "high velocity".
+    *   **False Positive:** Identified legitimate high-value transactions flagged due to "unseen IP".
+
+### Interpretation
+*   Compared SHAP-based importance with built-in feature importance.
+*   Confirmed that velocity and time-based features are consistently the top predictors across both methods.
+
+## Business Recommendations
+
+Based on model insights and SHAP explanations, actionable recommendations are proposed:
+
+1.  **Enhanced Verification for High-Risk Regions:**
+    *   SHAP analysis indicates location-based features are top drivers. Implement Step-Up Authentication (2FA) for transactions originating from countries identified as high-risk.
+
+2.  **Velocity-Based Rules:**
+    *   `user_tx_count` is significant. Introduce distinct velocity limits for new vs. established users. New users with >3 transactions in 1 hour should be manually reviewed.
+
+3.  **Flagging Rapid Purchases:**
+    *   Transactions occurring immediately after signup (`low time_since_signup`) should be flagged for additional challenge questions or SMS verification.
+
+## Anticipated Key Challenges and Mitigation Strategies
+
+While the roadmap for model development and explainability is clearly defined, several challenges were anticipated and addressed. Proactively addressing these risks is critical to ensuring both strong model performance and business relevance.
+
+1.  **Severe Class Imbalance**
+    *   **Mitigation Strategy:** Stratified train-test splits were used to preserve class proportions. Model evaluation prioritized imbalance-aware metrics such as Precision-Recall AUC, F1-Score, and Recall, rather than accuracy. Additionally, SMOTE oversampling was applied only to the training data.
+
+2.  **Overfitting in Complex Models**
+    *   **Mitigation Strategy:** Overfitting was controlled through cross-validation (Stratified K-Fold) and basic hyperparameter tuning (e.g., limiting tree depth).
+
+3.  **Threshold Selection and Business Trade-offs**
+    *   **Mitigation Strategy:** Decision thresholds were analyzed using precision-recall curves to identify operating points that balance security and customer experience.
+
+4.  **Interpretability of Ensemble Models**
+    *   **Mitigation Strategy:** This challenge was addressed using SHAP explainability techniques to provide both global and local interpretability.
+
+5.  **Noisy or Proxy Features**
+    *   **Mitigation Strategy:** Feature importance analysis and SHAP explanations were used to validate whether features contribute meaningfully.
+
+## Conclusion
+
+This project demonstrates a structured, end-to-end approach to fraud detection, from data analysis and feature engineering to model training and explainability. The final solution aims to provide accurate fraud detection while maintaining transparency and balancing business risk with customer experience.
